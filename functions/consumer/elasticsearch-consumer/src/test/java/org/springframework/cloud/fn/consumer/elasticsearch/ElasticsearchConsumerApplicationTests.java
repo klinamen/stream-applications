@@ -19,6 +19,7 @@ package org.springframework.cloud.fn.consumer.elasticsearch;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 import org.awaitility.Awaitility;
@@ -42,6 +43,7 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 @Testcontainers(disabledWithoutDocker = true)
 public class ElasticsearchConsumerApplicationTests {
@@ -177,6 +179,44 @@ public class ElasticsearchConsumerApplicationTests {
 							.ignoreException(ElasticsearchStatusException.class)
 							.await()
 							.until(() -> restHighLevelClient.get(getRequest, RequestOptions.DEFAULT).isExists());
+				});
+	}
+
+	@Test
+	public void testBulkIndexingWithIdFromHeader() {
+		this.contextRunner
+				.withPropertyValues("elasticsearch.consumer.index=foo_" + UUID.randomUUID(), "elasticsearch.consumer.batchSize=10",
+						"spring.elasticsearch.rest.uris=http://" + elasticsearch.getHttpHostAddress())
+				.run(context -> {
+					Consumer<Message<?>> elasticsearchConsumer = context.getBean("elasticsearchConsumer", Consumer.class);
+					ElasticsearchConsumerProperties properties = context.getBean(ElasticsearchConsumerProperties.class);
+					RestHighLevelClient restHighLevelClient = context.getBean(RestHighLevelClient.class);
+
+					for (int i = 0; i < properties.getBatchSize(); i++) {
+						final GetRequest getRequest = new GetRequest(properties.getIndex()).id(Integer.toString(i));
+						assertThatExceptionOfType(ElasticsearchStatusException.class)
+								.isThrownBy(() -> restHighLevelClient.get(getRequest, RequestOptions.DEFAULT))
+								.withFailMessage("Expected index not found exception for message %d")
+								.withMessageContaining("index_not_found_exception");
+
+						final Message<String> message = MessageBuilder
+								.withPayload("{\"seq\":" + i + ",\"age\":10,\"dateOfBirth\":1471466076564,"
+										+ "\"fullName\":\"John Doe\"}")
+								.setHeader(ElasticsearchConsumerConfiguration.INDEX_ID_HEADER, Integer.toString(i))
+								.build();
+
+						elasticsearchConsumer.accept(message);
+					}
+
+					for (int i = 0; i < properties.getBatchSize(); i++) {
+						GetRequest getRequest = new GetRequest(properties.getIndex()).id(Integer.toString(i));
+						GetResponse response = restHighLevelClient.get(getRequest, RequestOptions.DEFAULT);
+
+						assertThat(response.isExists())
+								.withFailMessage("Document with id=%d cannot be found.", i)
+								.isTrue();
+						assertThat(response.getSource().get("seq")).isEqualTo(i);
+					}
 				});
 	}
 

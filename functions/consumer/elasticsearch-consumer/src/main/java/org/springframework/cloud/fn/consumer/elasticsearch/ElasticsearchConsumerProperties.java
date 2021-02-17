@@ -50,6 +50,18 @@ public class ElasticsearchConsumerProperties {
 	 */
 	boolean async;
 
+	/**
+	 * Number of items to index for each request. It defaults to 1.
+	 * For values greater than 1 bulk indexing API will be used.
+	 */
+	int batchSize = 1;
+
+	/**
+	 * Timeout in milliseconds after which message group is flushed when bulk indexing is active.
+	 * It defaults to -1, meaning no automatic flush of idle message groups occurs.
+	 */
+	long groupTimeout = -1L;
+
 	public Expression getId() {
 		return id;
 	}
@@ -88,5 +100,21 @@ public class ElasticsearchConsumerProperties {
 
 	public void setAsync(boolean async) {
 		this.async = async;
+	}
+
+	public int getBatchSize() {
+		return batchSize;
+	}
+
+	public void setBatchSize(int batchSize) {
+		this.batchSize = batchSize;
+	}
+
+	public long getGroupTimeout() {
+		return groupTimeout;
+	}
+
+	public void setGroupTimeout(long groupTimeout) {
+		this.groupTimeout = groupTimeout;
 	}
 }
